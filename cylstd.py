@@ -50,7 +50,7 @@ level_diff_p = np.linspace(0, 100, 11)
 ###############################################################################
 x_lim_min, x_lim_max = -2, 3
 y_lim_min, y_lim_max = -2.5, 2.5
-
+# Check that MPS is available
 device="cuda"
 
 seed = 21
@@ -64,13 +64,13 @@ training_data, validation_data, test_data = np.split(data, [24, 29])
 ###############################################################################
 ### TRAINING DATA #############################################################
 ###############################################################################
-# 1. Read dataset from CSV
+# 1. Veri setini CSV dosyasından okuma
 df_training = pd.read_csv(f'training_data/re{training_data[0]:.0f}.csv')
 for i in range(1, len(training_data)):
     df0 = pd.read_csv(f'training_data/re{training_data[i]:.0f}.csv')
     df_training = pd.concat([df_training, df0], ignore_index=True)
 
-# Convert data to numpy arrays
+# Verileri numpy dizilerine dönüştürme
 df_training = df_training[(df_training['x-coordinate'].between(x_lim_min, x_lim_max)) 
                   & (df_training['y-coordinate'].between(y_lim_min, y_lim_max))]
 re = df_training['re'].values
@@ -80,7 +80,7 @@ x_vel = df_training['x-velocity'].values
 y_vel = df_training['y-velocity'].values
 pressure = df_training['pressure'].values
 
-# Normalize data
+# Veriyi normalize etme
 # re_mean, re_std = np.mean(re), np.std(re)
 # x_mean, x_std = np.mean(x_coord), np.std(x_coord)
 # y_mean, y_std = np.mean(y_coord), np.std(y_coord)
@@ -131,7 +131,7 @@ x_vel_norm = scale(x_vel, 'u')
 y_vel_norm = scale(y_vel, 'v')
 pressure_norm = scale(pressure, 'p')
 
-# Convert data to PyTorch tensors
+# Veriyi PyTorch tensörlerine dönüştürme
 inputs = torch.tensor(np.vstack((re_norm, x_coord_norm, y_coord_norm)).T, 
                       dtype=torch.float32, device=device)
 outputs = torch.tensor(np.vstack((x_vel_norm, y_vel_norm, pressure_norm)).T, 
@@ -141,13 +141,13 @@ training_loader = DataLoader(training_set, batch_size=batch_size, shuffle=True)
 ###############################################################################
 ### VALIDATION DATA ###########################################################
 ###############################################################################
-# 1. Read dataset from CSV
+# 1. Veri setini CSV dosyasından okuma
 df_validation = pd.read_csv(f'training_data/re{validation_data[0]:.0f}.csv')
 for i in range(1, len(validation_data)):
     df0 = pd.read_csv(f'training_data/re{validation_data[i]:.0f}.csv')
     df_validation = pd.concat([df_validation, df0], ignore_index=True)
 
-# Convert data to numpy arrays
+# Verileri numpy dizilerine dönüştürme
 df_validation = df_validation[(df_validation['x-coordinate'].between(x_lim_min, x_lim_max)) 
                   & (df_validation['y-coordinate'].between(y_lim_min, y_lim_max))]
 re = df_validation['re'].values
@@ -157,7 +157,7 @@ x_vel = df_validation['x-velocity'].values
 y_vel = df_validation['y-velocity'].values
 pressure = df_validation['pressure'].values
 
-# Normalize data
+# Veriyi normalize etme
 re_norm = scale(re, 're')
 x_coord_norm = scale(x_coord, 'x')
 y_coord_norm = scale(y_coord, 'y')
@@ -165,30 +165,30 @@ x_vel_norm = scale(x_vel, 'u')
 y_vel_norm = scale(y_vel, 'v')
 pressure_norm = scale(pressure, 'p')
 
-# Convert data to PyTorch tensors
+# Veriyi PyTorch tensörlerine dönüştürme
 inputs = torch.tensor(np.vstack((re_norm, x_coord_norm, y_coord_norm)).T, 
                       dtype=torch.float32, device=device)
 outputs = torch.tensor(np.vstack((x_vel_norm, y_vel_norm, pressure_norm)).T, 
                        dtype=torch.float32, device=device)
 
-# Create dataset and dataloader
+# Veri seti ve DataLoader oluşturma
 validation_set = TensorDataset(inputs, outputs)
 validation_loader = DataLoader(validation_set, batch_size=batch_size, shuffle=False)
 
-# 2. Define neural network model
+# 2. Sinir ağı modelini tanımlama
 class FlexibleNN(nn.Module):
     def __init__(self, input_size, hidden_layers, output_size):
         super(FlexibleNN, self).__init__()
         self.hidden_layers = nn.ModuleList()
         
-        # Fisrt hidden layer
+        # İlk gizli katman
         self.hidden_layers.append(nn.Linear(input_size, hidden_layers[0]))
         
-        # Other hidden layers
+        # Diğer gizli katmanlar
         for i in range(1, len(hidden_layers)):
             self.hidden_layers.append(nn.Linear(hidden_layers[i-1], hidden_layers[i]))
         
-        # Output layer
+        # Çıkış katmanı
         self.output_layer = nn.Linear(hidden_layers[-1], output_size)
     
     def forward(self, phi):
@@ -211,14 +211,14 @@ class FlexibleNN(nn.Module):
 
 model = FlexibleNN(input_size=3, hidden_layers=hidden_layers, output_size=3).to(device)
 
-# 3. Define loss and optimizer
+# 3. Kayıp fonksiyonu ve optimizer'ı tanımlama
 loss_fn = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=learning_rate)
 
 if continueTraining:
     model.load_state_dict(torch.load(f"{directory}{model_name}.pth"))
     
-# 4. Train model
+# 4. Modeli eğitme
 if trainMode:
     lossLog = np.zeros(0)
     vlossLog = np.zeros(0)
@@ -277,7 +277,7 @@ if trainMode:
         file.write(f'Mean Validation Loss: {vlossLog[-1]}\n')
         file.write(f'Training Time: {training_time:.2f}\n')
         
-    # Plot loss
+    # Kaybı çizdir
     plt.figure(1)
     plt.plot(np.arange(epoch+1), lossLog, '-b', label='Eğitim kaybı')
     plt.plot(np.arange(epoch+1), vlossLog, '-r', label='Doğrulama kaybı')
@@ -289,7 +289,7 @@ if trainMode:
     plt.legend(fontsize='large')
     plt.savefig(fname=f"{directory}{model_name}-loss.png")
 
-    # Plot monitors
+    # Monitörleri çizdir
     plt.figure(2)
     plt.plot(np.arange(epoch+1), ulog, label="Tahmin")
     plt.plot(np.arange(epoch+1), np.ones(epoch+1)*1.029, '--', label="Referans")

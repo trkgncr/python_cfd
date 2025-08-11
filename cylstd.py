@@ -392,7 +392,7 @@ plt.title('Tahmin: X-Hızı [m/s]')
 # plt.fill(x, y, color='w', zorder=3)
 plt.gca().add_patch(circles[1])
 
-# Difference between original and predicted
+# Difference of x-velocity
 plt.subplot(3, 3, 3).set_aspect('equal', 'box')
 contour_difference_u = plt.contourf(x_grid, y_grid, 
                                    abs((z_predicted_u - z_original_u)*100/(z_original_u+1e-10)), 
@@ -425,7 +425,7 @@ plt.title('Tahmin: Y-Hızı [m/s]')
 # plt.fill(x, y, color='w', zorder=3)
 plt.gca().add_patch(circles[4])
 
-# Difference between original and predicted
+# Difference of y-velocity
 plt.subplot(3, 3, 6).set_aspect('equal', 'box')
 contour_difference_v = plt.contourf(x_grid, y_grid, 
                                    abs((z_predicted_v - z_original_v)*100/(z_original_v+1e-10)), 
@@ -458,7 +458,7 @@ plt.title('Tahmin: Basınç [Pa]')
 # plt.fill(x, y, color='w', zorder=3)
 plt.gca().add_patch(circles[7])
 
-# Difference between original and predicted
+# Difference of pressure
 plt.subplot(3, 3, 9).set_aspect('equal', 'box')
 contour_difference_p = plt.contourf(x_grid, y_grid, 
                                    abs((z_predicted_p - z_original_p)*100/(z_original_p+1e-10)), 

@@ -13,7 +13,7 @@ import torch.optim as optim
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from matplotlib.patches import Circle
+# from matplotlib.patches import Circle
 from torch.utils.data import DataLoader, TensorDataset
 from scipy.interpolate import griddata
 from timeit import default_timer as timer
@@ -21,7 +21,7 @@ from timeit import default_timer as timer
 ###############################################################################
 ### MODE SELECTION ############################################################
 ###############################################################################
-trainMode = False
+trainMode = True
 continueTraining = False
 savePost = True
 isLeveled = True
@@ -29,18 +29,18 @@ isLeveled = True
 ###############################################################################
 ### HYPERPARAMETERS ###########################################################
 ###############################################################################
-hidden_layers = [512,256,128,64] 
-batch_size = 256
+hidden_layers = [1024,512,512,512] 
+batch_size = 1024
 learning_rate = 0.001
-epochs = 1000
-model_name = 'model-1'
-directory = 'models/cylstd_final/'
+epochs = 10
+model_name = 'model-2'
+directory = 'models/naca0012_final/'
 activation_fn = 'Sigmoid' # Chose between 'ReLU', 'Leaky ReLU', 'Sigmoid', 'Tanh', 'Softsign'
-stop_criteria = 1e-6
+stop_criteria = 3e-6
 ###############################################################################
 ### POST PARAMETERS ###########################################################
 ###############################################################################
-re_post_index = 3
+aoa_post_index = 0
 x_post_min, x_post_max = -1, 2
 y_post_min, y_post_max = -1, 1
 
@@ -53,27 +53,27 @@ y_lim_min, y_lim_max = -2.5, 2.5
 # Check that MPS is available
 device="cuda"
 
-seed = 21
+seed = 13
 torch.manual_seed(seed)
 np.random.seed(seed)
 
-data = np.linspace(5, 38, 34)
+data = np.linspace(0, 8, 41)
 np.random.shuffle(data)
-training_data, validation_data, test_data = np.split(data, [24, 29])
+training_data, validation_data, test_data = np.split(data, [29, 35])
 
 ###############################################################################
 ### TRAINING DATA #############################################################
 ###############################################################################
 # 1. Veri setini CSV dosyasından okuma
-df_training = pd.read_csv(f'training_data/re{training_data[0]:.0f}.csv')
+df_training = pd.read_csv(f'training_data/aoa{training_data[0]:.1f}.csv')
 for i in range(1, len(training_data)):
-    df0 = pd.read_csv(f'training_data/re{training_data[i]:.0f}.csv')
+    df0 = pd.read_csv(f'training_data/aoa{training_data[i]:.1f}.csv')
     df_training = pd.concat([df_training, df0], ignore_index=True)
 
 # Verileri numpy dizilerine dönüştürme
 df_training = df_training[(df_training['x-coordinate'].between(x_lim_min, x_lim_max)) 
                   & (df_training['y-coordinate'].between(y_lim_min, y_lim_max))]
-re = df_training['re'].values
+aoa = df_training['aoa'].values
 x_coord = df_training['x-coordinate'].values
 y_coord = df_training['y-coordinate'].values
 x_vel = df_training['x-velocity'].values
@@ -81,7 +81,7 @@ y_vel = df_training['y-velocity'].values
 pressure = df_training['pressure'].values
 
 # Veriyi normalize etme
-# re_mean, re_std = np.mean(re), np.std(re)
+# aoa_mean, aoa_std = np.mean(aoa), np.std(aoa)
 # x_mean, x_std = np.mean(x_coord), np.std(x_coord)
 # y_mean, y_std = np.mean(y_coord), np.std(y_coord)
 # u_mean, u_std = np.mean(x_vel), np.std(x_vel)
@@ -92,8 +92,7 @@ umin, umax = min(x_vel), max(x_vel)
 vmin, vmax = min(y_vel), max(y_vel)
 pmin, pmax = min(pressure), max(pressure)
 
-re_norm_factor = 40
-
+aoa_norm_factor = 10
 
 def scale(value, type):
     if type == 'x':
@@ -107,7 +106,7 @@ def scale(value, type):
     elif type == 'p':
         return (value - pmin)/(pmax - pmin)
     else:
-        return value/re_norm_factor
+        return value/aoa_norm_factor
 
 def unscale(value, type):
     if type == 'x':
@@ -121,10 +120,10 @@ def unscale(value, type):
     elif type == 'p':
         return (value * (pmax - pmin)) + pmin
     else:
-        return value*re_norm_factor
+        return value*aoa_norm_factor
         
     
-re_norm = scale(re, 're')
+aoa_norm = scale(aoa, 'aoa')
 x_coord_norm = scale(x_coord, 'x')
 y_coord_norm = scale(y_coord, 'y')
 x_vel_norm = scale(x_vel, 'u')
@@ -132,7 +131,7 @@ y_vel_norm = scale(y_vel, 'v')
 pressure_norm = scale(pressure, 'p')
 
 # Veriyi PyTorch tensörlerine dönüştürme
-inputs = torch.tensor(np.vstack((re_norm, x_coord_norm, y_coord_norm)).T, 
+inputs = torch.tensor(np.vstack((aoa_norm, x_coord_norm, y_coord_norm)).T, 
                       dtype=torch.float32, device=device)
 outputs = torch.tensor(np.vstack((x_vel_norm, y_vel_norm, pressure_norm)).T, 
                        dtype=torch.float32, device=device)
@@ -142,15 +141,15 @@ training_loader = DataLoader(training_set, batch_size=batch_size, shuffle=True)
 ### VALIDATION DATA ###########################################################
 ###############################################################################
 # 1. Veri setini CSV dosyasından okuma
-df_validation = pd.read_csv(f'training_data/re{validation_data[0]:.0f}.csv')
+df_validation = pd.read_csv(f'training_data/aoa{validation_data[0]:.1f}.csv')
 for i in range(1, len(validation_data)):
-    df0 = pd.read_csv(f'training_data/re{validation_data[i]:.0f}.csv')
+    df0 = pd.read_csv(f'training_data/aoa{validation_data[i]:.1f}.csv')
     df_validation = pd.concat([df_validation, df0], ignore_index=True)
 
 # Verileri numpy dizilerine dönüştürme
 df_validation = df_validation[(df_validation['x-coordinate'].between(x_lim_min, x_lim_max)) 
                   & (df_validation['y-coordinate'].between(y_lim_min, y_lim_max))]
-re = df_validation['re'].values
+aoa = df_validation['aoa'].values
 x_coord = df_validation['x-coordinate'].values
 y_coord = df_validation['y-coordinate'].values
 x_vel = df_validation['x-velocity'].values
@@ -158,7 +157,7 @@ y_vel = df_validation['y-velocity'].values
 pressure = df_validation['pressure'].values
 
 # Veriyi normalize etme
-re_norm = scale(re, 're')
+aoa_norm = scale(aoa, 'aoa')
 x_coord_norm = scale(x_coord, 'x')
 y_coord_norm = scale(y_coord, 'y')
 x_vel_norm = scale(x_vel, 'u')
@@ -166,7 +165,7 @@ y_vel_norm = scale(y_vel, 'v')
 pressure_norm = scale(pressure, 'p')
 
 # Veriyi PyTorch tensörlerine dönüştürme
-inputs = torch.tensor(np.vstack((re_norm, x_coord_norm, y_coord_norm)).T, 
+inputs = torch.tensor(np.vstack((aoa_norm, x_coord_norm, y_coord_norm)).T, 
                       dtype=torch.float32, device=device)
 outputs = torch.tensor(np.vstack((x_vel_norm, y_vel_norm, pressure_norm)).T, 
                        dtype=torch.float32, device=device)
@@ -245,7 +244,7 @@ if trainMode:
             for vbatch, (vinputs, vtargets) in enumerate(validation_loader):
                 voutputs = model(vinputs)
                 vloss = loss_fn(voutputs, vtargets)
-            monitor_input = torch.tensor([scale(validation_data[0], 're'), 0.1, 0.0], dtype=torch.float32, device=device)
+            monitor_input = torch.tensor([scale(validation_data[0], 'aoa'), 0.1, 0.1], dtype=torch.float32, device=device)
             monitor_predicted = model(monitor_input)
             utemp, vtemp, ptemp = monitor_predicted.to("cpu").numpy()
             ulog = np.append(ulog, unscale(utemp, 'u'))
@@ -269,9 +268,9 @@ if trainMode:
         file.write(f'Batch Size: {batch_size}\n')
         file.write(f'Learning Rate: {learning_rate}\n')
         file.write(f'Epochs: {epochs}\n')
-        file.write(f'Trained at Re numbers: {training_data}\n')
-        file.write(f'Validated at Re numbers: {validation_data}\n')
-        file.write(f'Tested at Re numbers: {test_data}\n')
+        file.write(f'Trained at AoAs: {training_data}\n')
+        file.write(f'Validated at AoAs: {validation_data}\n')
+        file.write(f'Tested at AoAs: {test_data}\n')
         file.write(f'Activation Function: {activation_fn}\n')
         file.write(f'Mean Training Loss: {lossLog[-1]}\n')
         file.write(f'Mean Validation Loss: {vlossLog[-1]}\n')
@@ -282,7 +281,7 @@ if trainMode:
     plt.plot(np.arange(epoch+1), lossLog, '-b', label='Eğitim kaybı')
     plt.plot(np.arange(epoch+1), vlossLog, '-r', label='Doğrulama kaybı')
     plt.yscale("log")
-    plt.ylim(1e-7,1e0)
+    plt.ylim(1e-6,1e0)
     plt.xlabel("Tur Sayısı")
     plt.ylabel("Kayıp")
     plt.grid(color='0.95')
@@ -340,15 +339,15 @@ y_grid_flatten = y_grid.flatten()
 x_input = torch.tensor(x_grid_flatten, dtype=torch.float32, device=device).view(-1, 1)
 y_input = torch.tensor(y_grid_flatten, dtype=torch.float32, device=device).view(-1, 1)
 
-print(f'Test for Re: {test_data[re_post_index]:.0f}\n')
-re_input = torch.tensor((np.ones(sample_x*sample_y)*scale(test_data[re_post_index], 're')), 
+print(f'Test for aoa: {test_data[aoa_post_index]:.1f} deg\n')
+aoa_input = torch.tensor((np.ones(sample_x*sample_y)*scale(test_data[aoa_post_index], 'aoa')), 
                          dtype=torch.float32, device=device).view(-1, 1)
-inputs = torch.cat((re_input, x_input, y_input), dim=1)
+inputs = torch.cat((aoa_input, x_input, y_input), dim=1)
 predicted = model(inputs).detach().cpu().numpy()
 
 # 6. Sonuçları görselleştirme
 
-df_post = pd.read_csv(f'training_data/re{test_data[re_post_index]:.0f}.csv')
+df_post = pd.read_csv(f'training_data/aoa{test_data[aoa_post_index]:.1f}.csv')
 # Orijinal veriyi filtreleme
 df_filtered = df_post[(df_post['x-coordinate'].between(x_post_min-0.5, x_post_max+0.5)) 
     & (df_post['y-coordinate'].between(y_post_min-0.5, y_post_max+0.5))]
@@ -432,15 +431,10 @@ p_min, p_max = min(p_min_o,p_min_p), max(p_max_o,p_max_p)
 level_u = np.linspace(u_min, u_max, 11)
 level_v = np.linspace(v_min, v_max, 11)
 level_p = np.linspace(p_min, p_max, 11)
-
-# Silindir
-circles = []
-for i in range(13):
-    circles.append(Circle((0, 0), 0.5, color='white', fill=True, zorder=10))
     
 # load geometry from data file
-# with open('naca0012.txt', 'r') as file:
-#     x_naca, y_naca = np.loadtxt(file, dtype=float, unpack=True)
+with open('naca0012.txt', 'r') as file:
+    x_naca, y_naca = np.loadtxt(file, dtype=float, unpack=True)
 
 plt.figure(figsize=(10, 6))
 plt.figure(5) if trainMode else plt.figure(1)
@@ -454,8 +448,8 @@ else:
 
 plt.colorbar(contour_original_u)
 plt.title('HAD: X-Hızı [m/s]')
-# plt.fill(x_naca, y_naca, color='w', zorder=3)
-plt.gca().add_patch(circles[0])
+plt.fill(x_naca, y_naca, color='w', zorder=3)
+# plt.gca().add_patch(circles[0])
 
 # x-hızının tahmin edilen değeri
 plt.subplot(3, 3, 2).set_aspect('equal', 'box')
@@ -465,8 +459,8 @@ else:
     contour_predicted_u = plt.contourf(x_grid, y_grid, z_predicted_u, cmap='viridis')
 plt.colorbar(contour_predicted_u)
 plt.title('Tahmin: X-Hızı [m/s]')
-# plt.fill(x_naca, y_naca, color='w', zorder=3)
-plt.gca().add_patch(circles[1])
+plt.fill(x_naca, y_naca, color='w', zorder=3)
+# plt.gca().add_patch(circles[1])
 
 # x-hızının farkı
 plt.subplot(3, 3, 3).set_aspect('equal', 'box')
@@ -476,8 +470,8 @@ contour_difference_u = plt.contourf(x_grid, y_grid,
                                     levels=level_diff_u)
 plt.colorbar(contour_difference_u)
 plt.title('Fark: X-Hızı [%]')
-# plt.fill(x_naca, y_naca, color='w', zorder=3)
-plt.gca().add_patch(circles[2])
+plt.fill(x_naca, y_naca, color='w', zorder=3)
+# plt.gca().add_patch(circles[2])
 
 # y-hızının orijinal değeri
 plt.subplot(3, 3, 4).set_aspect('equal', 'box')
@@ -487,8 +481,8 @@ else:
     contour_original_v = plt.contourf(x_grid, y_grid, z_original_v, cmap='viridis')
 plt.colorbar(contour_original_v)
 plt.title('HAD: Y-Hızı [m/s]')
-# plt.fill(x_naca, y_naca, color='w', zorder=3)
-plt.gca().add_patch(circles[3])
+plt.fill(x_naca, y_naca, color='w', zorder=3)
+# plt.gca().add_patch(circles[3])
 
 # y-hızının tahmin edilen değeri
 plt.subplot(3, 3, 5).set_aspect('equal', 'box')
@@ -498,8 +492,8 @@ else:
     contour_predicted_v = plt.contourf(x_grid, y_grid, z_predicted_v, cmap='viridis') 
 plt.colorbar(contour_predicted_v)
 plt.title('Tahmin: Y-Hızı [m/s]')
-# plt.fill(x_naca, y_naca, color='w', zorder=3)
-plt.gca().add_patch(circles[4])
+plt.fill(x_naca, y_naca, color='w', zorder=3)
+# plt.gca().add_patch(circles[4])
 
 # y-hızının farkı
 plt.subplot(3, 3, 6).set_aspect('equal', 'box')
@@ -509,8 +503,8 @@ contour_difference_v = plt.contourf(x_grid, y_grid,
                                     levels=level_diff_v)
 plt.colorbar(contour_difference_v)
 plt.title('Fark: Y-Hızı [%]')
-# plt.fill(x_naca, y_naca, color='w', zorder=3)
-plt.gca().add_patch(circles[5])
+plt.fill(x_naca, y_naca, color='w', zorder=3)
+# plt.gca().add_patch(circles[5])
 
 # Basıncın orijinal değeri
 plt.subplot(3, 3, 7).set_aspect('equal', 'box')
@@ -520,8 +514,8 @@ else:
     contour_original_p = plt.contourf(x_grid, y_grid, z_original_p, cmap='viridis')
 plt.colorbar(contour_original_p)
 plt.title('HAD: Basınç [Pa]')
-# plt.fill(x_naca, y_naca, color='w', zorder=3)
-plt.gca().add_patch(circles[6])
+plt.fill(x_naca, y_naca, color='w', zorder=3)
+# plt.gca().add_patch(circles[6])
 
 # Basıncın tahmin edilen değeri
 plt.subplot(3, 3, 8).set_aspect('equal', 'box')
@@ -531,8 +525,8 @@ else:
     contour_predicted_p = plt.contourf(x_grid, y_grid, z_predicted_p, cmap='viridis')
 plt.colorbar(contour_predicted_p)
 plt.title('Tahmin: Basınç [Pa]')
-# plt.fill(x_naca, y_naca, color='w', zorder=3)
-plt.gca().add_patch(circles[7])
+plt.fill(x_naca, y_naca, color='w', zorder=3)
+# plt.gca().add_patch(circles[7])
 
 # Basıncın farkı
 plt.subplot(3, 3, 9).set_aspect('equal', 'box')
@@ -542,12 +536,12 @@ contour_difference_p = plt.contourf(x_grid, y_grid,
                                     levels=level_diff_p)
 plt.colorbar(contour_difference_p)
 plt.title('Fark: Basınç [%]')
-# plt.fill(x_naca, y_naca, color='w', zorder=3)
-plt.gca().add_patch(circles[8])
+plt.fill(x_naca, y_naca, color='w', zorder=3)
+# plt.gca().add_patch(circles[8])
 
 plt.tight_layout()
 if savePost:
-    plt.savefig(f"{directory}{model_name}-contour-re{test_data[re_post_index]:.0f}.png")
+    plt.savefig(f"{directory}{model_name}-contour-aoa{test_data[aoa_post_index]:.1f}.png")
     
 # plt.figure(figsize=(9, 2))
 # plt.figure(6) if trainMode else plt.figure(2)
@@ -571,91 +565,87 @@ if savePost:
 # # plt.gca().add_patch(circles[10])
 # plt.tight_layout()
 # if savePost:
-#     plt.savefig(f"{directory}{model_name}-streamline-re{test_data[re_post_index]:.0f}.png")
+#     plt.savefig(f"{directory}{model_name}-streamline-aoa{test_data[aoa_post_index]:.1f}.png")
     
 ##################
 ### Extra-Post ###
 ##################
 
-# plt.figure(figsize=(9,6))
-# plt.figure(6) if trainMode else plt.figure(2)
+plt.figure(figsize=(9,6))
+plt.figure(6) if trainMode else plt.figure(2)
 
-# # Original streamline
-# plt.subplot(1, 2, 1).set_aspect('equal', 'box')
-# vel_original = np.sqrt(z_original_u**2 + z_original_v**2)
-# # plt.fill(x_naca, y_naca, color='k', zorder=3)
-# strm = plt.streamplot(x_grid, y_grid, z_original_u, z_original_v, density=(1,0.5), arrowstyle='-',
-#                       color='k', broken_streamlines=False, linewidth=0.2, cmap='viridis')
-# plt.title('HAD Akış Çizgisi')
+# Original streamline
+plt.subplot(2, 2, 1).set_aspect('equal', 'box')
+vel_original = np.sqrt(z_original_u**2 + z_original_v**2)
+plt.fill(x_naca, y_naca, color='k', zorder=3)
+strm = plt.streamplot(x_grid, y_grid, z_original_u, z_original_v, density=(1,0.5), arrowstyle='-',
+                      color='k', broken_streamlines=False, linewidth=0.2, cmap='viridis')
+plt.title('HAD Akış Çizgisi')
 
-# # Predicted streamline
-# plt.subplot(2, 2, 2).set_aspect('equal', 'box')
-# # plt.fill(x_naca, y_naca, color='k', zorder=3)
-# vel_predicted = np.sqrt(z_predicted_u**2 + z_predicted_v**2)
-# strm = plt.streamplot(x_grid, y_grid, z_predicted_u, z_predicted_v, density=(1,0.5), arrowstyle='-',
-#                       color='k', broken_streamlines=False, linewidth=0.2, cmap='viridis')
-# plt.title('Tahmin Akış Çizgisi')
+# Predicted streamline
+plt.subplot(2, 2, 2).set_aspect('equal', 'box')
+plt.fill(x_naca, y_naca, color='k', zorder=3)
+vel_predicted = np.sqrt(z_predicted_u**2 + z_predicted_v**2)
+strm = plt.streamplot(x_grid, y_grid, z_predicted_u, z_predicted_v, density=(1,0.5), arrowstyle='-',
+                      color='k', broken_streamlines=False, linewidth=0.2, cmap='viridis')
+plt.title('Tahmin Akış Çizgisi')
 
-# # Original te
-# plt.subplot(2, 2, 3).set_aspect('equal', 'box')
-# vel_original = np.sqrt(z_original_u**2 + z_original_v**2)
-# # plt.fill(x_naca, y_naca, color='k', zorder=3)
-# strm = plt.streamplot(x_grid, y_grid, z_original_u, z_original_v, density=(1,0.5), arrowstyle='-',
-#                       color='k', broken_streamlines=False, linewidth=0.2, cmap='viridis')
-# plt.title('HAD Akış Çizgisi')
-# plt.gca().set_xlim([0.55, 1.15])
-# plt.gca().set_ylim([-0.15, 0.25])
+# Original te
+plt.subplot(2, 2, 3).set_aspect('equal', 'box')
+vel_original = np.sqrt(z_original_u**2 + z_original_v**2)
+plt.fill(x_naca, y_naca, color='k', zorder=3)
+strm = plt.streamplot(x_grid, y_grid, z_original_u, z_original_v, density=(1,0.5), arrowstyle='-',
+                      color='k', broken_streamlines=False, linewidth=0.2, cmap='viridis')
+plt.title('HAD Akış Çizgisi')
+plt.gca().set_xlim([0.55, 1.15])
+plt.gca().set_ylim([-0.15, 0.25])
 
-# # Predicted te
-# plt.subplot(2, 2, 4).set_aspect('equal', 'box')
-# # plt.fill(x_naca, y_naca, color='k', zorder=3)
-# vel_predicted = np.sqrt(z_predicted_u**2 + z_predicted_v**2)
-# strm = plt.streamplot(x_grid, y_grid, z_predicted_u, z_predicted_v, density=(2,0.5), arrowstyle='-',
-#                       color='k', broken_streamlines=False, linewidth=0.2, cmap='viridis')
-# plt.title('Tahmin Akış Çizgisi')
-# plt.gca().set_xlim([0.55, 1.15])
-# plt.gca().set_ylim([-0.15, 0.25])
+# Predicted te
+plt.subplot(2, 2, 4).set_aspect('equal', 'box')
+plt.fill(x_naca, y_naca, color='k', zorder=3)
+vel_predicted = np.sqrt(z_predicted_u**2 + z_predicted_v**2)
+strm = plt.streamplot(x_grid, y_grid, z_predicted_u, z_predicted_v, density=(2,0.5), arrowstyle='-',
+                      color='k', broken_streamlines=False, linewidth=0.2, cmap='viridis')
+plt.title('Tahmin Akış Çizgisi')
+plt.gca().set_xlim([0.55, 1.15])
+plt.gca().set_ylim([-0.15, 0.25])
 
-# plt.tight_layout()
-# if savePost:
-#     plt.savefig(f"{directory}{model_name}-streamline4-re{test_data[re_post_index]:.0f}.png")
+plt.tight_layout()
+if savePost:
+    plt.savefig(f"{directory}{model_name}-streamline4-aoa{test_data[aoa_post_index]:.1f}.png")
     
 ############################
 ### Pressure-Coefficient ###
 ############################
-# dfp = pd.read_csv(f'test_data/cp-{test_data[re_post_index]:.0f}.csv')
-dfp = pd.read_csv('test_data/cp-re20.csv')
+dfp = pd.read_csv(f'test_data/cp-{test_data[aoa_post_index]:.1f}deg.csv')
 x = dfp['x-coordinate'].values
 y = dfp['y-coordinate'].values
 p = dfp['pressure'].values
 
-re_input = torch.tensor((np.ones(len(x))*scale(20, 're')), dtype=torch.float32, device=device).view(-1, 1)
+aoa_input = torch.tensor((np.ones(len(x))*scale(test_data[aoa_post_index], 'aoa')), dtype=torch.float32, device=device).view(-1, 1)
 x_input = torch.tensor(scale(x, 'x'), dtype=torch.float32, device=device).view(-1, 1)
 y_input = torch.tensor(scale(y, 'y'), dtype=torch.float32, device=device).view(-1, 1)
-inputs = torch.cat((re_input, x_input, y_input), dim=1)
+inputs = torch.cat((aoa_input, x_input, y_input), dim=1)
 predicted = model(inputs).detach().cpu().numpy()
 
 plt.figure(7) if trainMode else plt.figure(3)
-plt.plot((np.arctan2(y,x) *180/np.pi + 360) % 360, 2*unscale(predicted[:, 2], 'p')/0.2**2, 'r^', label='Tahmin')
-plt.plot((np.arctan2(y,x) *180/np.pi + 360) % 360, 2*p/0.2**2, '.', label='HAD')
+plt.plot(x/1.07, 2*unscale(predicted[:, 2], 'p'), 'r^', label='Tahmin')
+plt.plot(x/1.07, 2*p, '.', label='HAD')
 plt.legend(fontsize='large')
-plt.xlabel('Theta', fontsize='large')
+plt.xlabel('X/C', fontsize='large')
 plt.ylabel('Cp', fontsize='large')
-plt.title('Re = 20', fontsize='large')
-plt.gca().set_xlim([0, 360])
-plt.xticks(np.arange(0, 361, 45))
-plt.gca().set_ylim([-1.1, 1.4])
-plt.grid(color='0.95')
+plt.title(f'Hücum açısı = {test_data[aoa_post_index]:.1f} derece', fontsize='large')
+plt.gca().set_xlim([-0.1, 1.1])
+plt.gca().set_ylim([-1.2, 1.2])
 if savePost:
-    plt.savefig(f"{directory}{model_name}-cp-re20.png")
+    plt.savefig(f"{directory}{model_name}-cp-aoa{test_data[aoa_post_index]:.1f}.png")
 
-    dfcp = pd.DataFrame({'x-coordinate': x,
+dfcp = pd.DataFrame({'x-coordinate': x,
                     'y-coordinate': y,
                     'pressure': unscale(predicted[:, 2], 'p')})
 
-    dfcp.to_csv(f'{directory}{model_name}-predicted-cp-re20.csv', index=False)
-############################
-############################    
+dfcp.to_csv(f'{directory}{model_name}-predicted-cp-{test_data[aoa_post_index]:.1f}deg.csv', index=False)
+    
 # plt.figure(figsize=(9, 5))
 # plt.figure(7) if trainMode else plt.figure(3)
 # # Original vector
@@ -676,7 +666,7 @@ if savePost:
 # # plt.gca().add_patch(circles[10])
 # plt.tight_layout()
 # if savePost:
-#     plt.savefig(f"{directory}{model_name}-vector-re{test_data[re_post_index]:.0f}.png")
+#     plt.savefig(f"{directory}{model_name}-vector-aoa{test_data[aoa_post_index]:.1f}.png")
     
 # # Original streamline
 # plt.figure(figsize=(7, 5))
@@ -690,7 +680,7 @@ if savePost:
 # plt.title('HAD Akış Çizgisi')
 # # plt.gca().add_patch(circles[11])
 # if savePost:
-#     plt.savefig(f"{directory}{model_name}-stro-re{test_data[re_post_index]:.0f}.png")
+#     plt.savefig(f"{directory}{model_name}-stro-aoa{test_data[aoa_post_index]:.1f}.png")
 
 # # Predicted streamline
 # plt.figure(figsize=(7, 5))
@@ -705,7 +695,7 @@ if savePost:
 # plt.title('Tahmin Akış Çizgisi')
 # # plt.gca().add_patch(circles[12])
 # if savePost:
-#     plt.savefig(f"{directory}{model_name}-strp-re{test_data[re_post_index]:.0f}.png")
+#     plt.savefig(f"{directory}{model_name}-strp-aoa{test_data[aoa_post_index]:.1f}.png")
 
 
 plt.show()
